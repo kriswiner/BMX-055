@@ -1,6 +1,6 @@
 BMX-055
 =======
-!(https://cloud.githubusercontent.com/assets/6698410/4963527/160e313e-671a-11e4-9a54-a20686bb20cb.jpg)
+!(https://cloud.githubusercontent.com/assets/6698410/4963527/160e313e-671a-11e4-9a54-a20686bb20cb.jpg)   
 
  Demonstrate basic BMX-055 functionality including parameterizing the register addresses, initializing the sensor, 
  getting properly scaled accelerometer, gyroscope, and magnetometer data out. Added display functions to 
