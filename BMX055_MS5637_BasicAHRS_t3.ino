@@ -9,14 +9,14 @@
  allow display to on breadboard monitor. Addition of 9 DoF sensor fusion using open source Madgwick and 
  Mahony filter algorithms. Sketch runs on the 3.3 V 8 MHz Pro Mini and the Teensy 3.1.
  
- This sketch is intended specifically for the BMX055MS5637 Add-on shield for the Teensy 3.1.
+ This sketch is intended specifically for the BMX055+MS5637 Add-on shield for the Teensy 3.1.
  It uses SDA/SCL on pins 17/16, respectively, and it uses the Teensy 3.1-specific Wire library i2c_t3.h.
  The MS5637 is a simple but high resolution pressure sensor, which can be used in its high resolution
  mode but with power consumption od 20 microAmp, or in a lower resolution mode with power consumption of
  only 1 microAmp. The choice will depend on the application.
  
  SDA and SCL should have external pull-up resistors (to 3.3V).
- 4k7 resistors are on the BMX055 Mini Add-On boaRD for Teensy 3.1.
+ 4k7 resistors are on the BMX055+MS5637 Mini Add-On board for Teensy 3.1.
  
  Hardware setup:
  BMX055 Mini Add-On ------- Teensy 3.1
@@ -223,7 +223,7 @@ Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 3, 4);
 #define BMX055_MAG_ADDRESS  0x10   // Address of BMX055 magnetometer
 #define MS5637_ADDRESS      0x76   // Address of altimeter
 
-#define SerialDebug false  // set to true to get Serial output for debugging
+#define SerialDebug true  // set to true to get Serial output for debugging
 
 // Set initial input parameters
 // define X055 ACC full scale options
@@ -292,12 +292,12 @@ enum Mmode {
 
 // Specify sensor full scale
 uint8_t OSR    = ADC_8192;         // set pressure amd temperature oversample rate
-uint8_t Gscale = GFS_125DPS;       // set gyro full scale to highest resolution +/-125 degrees/second
-uint8_t GODRBW = G_200Hz23Hz;      // set gyro ODR to 200 Hz and lowest bandwidth od 23 Hz
-uint8_t Ascale = AFS_2G;           // set accel full scale to highest resolution +/-2 gs
-uint8_t ACCBW  = 0x80 & ABW_8Hz;   // Choose a 8 Hz bandwidth for a 200 Hz ACC ODR
-uint8_t Mmode  = lowPower;         // Choose either 14-bit or 16-bit magnetometer resolution
-uint8_t MODR   = MODR_10Hz;        // set magnetometer data rate to 20 Hz
+uint8_t Gscale = GFS_125DPS;       // set gyro full scale  
+uint8_t GODRBW = G_200Hz23Hz;      // set gyro ODR and bandwidth 
+uint8_t Ascale = AFS_2G;           // set accel full scale  
+uint8_t ACCBW  = 0x80 & ABW_16Hz;  // Choose bandwidth for accelerometer
+uint8_t Mmode  = Regular;          // Choose magnetometer operation mode
+uint8_t MODR   = MODR_10Hz;        // set magnetometer data rate 
 float aRes, gRes, mRes;            // scale resolutions per LSB for the sensors
 
 // Parameters to hold BMX055 trim values
@@ -333,9 +333,8 @@ double Temperature, Pressure; // stores MS5637 pressures sensor pressure and tem
 // BMX055 variables
 int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
 int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
-int16_t magCount[4];    // Stores the 16-bit signed magnetometer sensor output
-float magCalibration[3] = {0, 0, 0}, magbias[3] = {0, 0, 0};  // Factory mag calibration and mag bias
-float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0};      // Bias corrections for gyro and accelerometer
+int16_t magCount[3];    // Stores the 13/15-bit signed magnetometer sensor output
+float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3] = {0, 0, 0};  // Bias corrections for gyro, accelerometer, mag
 int16_t tempCount;            // temperature raw count output
 float   temperature;          // Stores the BMX055 internal chip temperature in degrees Celsius
 float SelfTest[6];            // holds results of gyro and accelerometer self test
@@ -383,12 +382,6 @@ void setup()
   pinMode(intGYRO2, INPUT);
   pinMode(intMAG1,  INPUT);
   pinMode(intDRDYM, INPUT);
-  digitalWrite(intACC1, LOW);
-  digitalWrite(intACC2, LOW);
-  digitalWrite(intGYRO1, LOW);
-  digitalWrite(intGYRO2, LOW);
-  digitalWrite(intMAG1, LOW);
-  digitalWrite(intDRDYM,LOW);
 
   pinMode(myLed, OUTPUT);
   digitalWrite(myLed, HIGH);
@@ -459,14 +452,14 @@ void setup()
   display.display();
   delay(1000); 
 
-//  initBMX055(); 
+  initBMX055(); 
   Serial.println("BMX055 initialized for active data mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
   display.clearDisplay();   // clears the screen and buffer
   display.setCursor(0, 0); display.print("BMX055 online");
   display.setCursor(0,10); display.print("initialized");
   display.display();
   delay(1000); 
- /* 
+  
   // Reset the MS5637 pressure sensor
   MS5637Reset();
   delay(100);
@@ -492,12 +485,13 @@ void setup()
   display.setCursor(0,20); display.print("Should be "); display.setCursor(50,30); display.print(refCRC);
   display.display();
   delay(1000);  
-  */  
+    
   // get sensor resolutions, only need to do this once
    getAres();
    getGres();
-   mRes = 1.;
-//   trimBMX055();  // read the magnetometer calibration data
+   // magnetometer resolution is 1 microTesla/16 counts or 1/1.6 milliGauss/count
+   mRes = 1./1.6;
+   trimBMX055();  // read the magnetometer calibration data
    display.clearDisplay();
    display.setCursor(0, 0); display.print("BMX055 Res");
    display.setCursor(0,10); display.print("ACC ");  display.setCursor(50,10); display.print(1000.*aRes, 2);
@@ -506,9 +500,14 @@ void setup()
    display.display();
    delay(1000); 
    
-   magbias[0] = 0;//+470.;  // User environmental x-axis correction in milliGauss, should be automatically calculated
-   magbias[1] = 0;//+120.;  // User environmental x-axis correction in milliGauss
-   magbias[2] = 0;//+125.;  // User environmental x-axis correction in milliGauss
+   
+  fastcompaccelBMX055(accelBias);
+  Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
+  Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
+ 
+  magcalBMX055(magBias);
+  Serial.println("mag biases (mG)"); Serial.println(magBias[0]); Serial.println(magBias[1]); Serial.println(magBias[2]);
+   
   }
   else
   {
@@ -525,9 +524,9 @@ void loop()
     readAccelData(accelCount);  // Read the x/y/z adc values
  
     // Now we'll calculate the accleration value into actual g's
-    ax = (float)accelCount[0]*aRes; // - accelBias[0];  // get actual g value, this depends on scale being set
-    ay = (float)accelCount[1]*aRes; // - accelBias[1];   
-    az = (float)accelCount[2]*aRes; // - accelBias[2]; 
+    ax = (float)accelCount[0]*aRes; // + accelBias[0];  // get actual g value, this depends on scale being set
+    ay = (float)accelCount[1]*aRes; // + accelBias[1];   
+    az = (float)accelCount[2]*aRes; // + accelBias[2]; 
  // } 
 //  if (digitalRead(intGYRO2)) {  // On interrupt, read data
     readGyroData(gyroCount);  // Read the x/y/z adc values
@@ -541,10 +540,10 @@ void loop()
     readMagData(magCount);  // Read the x/y/z adc values
     
     // Calculate the magnetometer values in milliGauss
-    // Include factory calibration per data sheet and user environmental corrections
-    mx = (float)magCount[0]*mRes; //*magCalibration[0] - magbias[0];  // get actual magnetometer value, this depends on scale being set
-    my = (float)magCount[1]*mRes; //*magCalibration[1] - magbias[1];  
-    mz = (float)magCount[2]*mRes; //*magCalibration[2] - magbias[2]; 
+    // Temperature-compensated magnetic field is in 16 LSB/microTesla
+    mx = (float)magCount[0]*mRes - magBias[0];  // get actual magnetometer value, this depends on scale being set
+    my = (float)magCount[1]*mRes - magBias[1];  
+    mz = (float)magCount[2]*mRes - magBias[2]; 
  //}  
  
   Now = micros();
@@ -558,7 +557,7 @@ void loop()
   // the magnetometer z-axis (+ down) is opposite to z-axis (+ up) of accelerometer and gyro!
   // We have to make some allowance for this orientationmismatch in feeding the output to the quaternion filter.
   // For the MPU-9250, we have chosen a magnetic rotation that keeps the sensor forward along the x-axis just like
-  // in the LSM9DS0 sensor. This rotation can be modified to allow any convenient orientation convention.
+  // in the BMX055 sensor. This rotation can be modified to allow any convenient orientation convention.
   // This is ok by aircraft orientation standards!  
   // Pass gyro rate as rad/s
   MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f,  my,  mx, mz);
@@ -575,20 +574,20 @@ void loop()
     Serial.print("gx = "); Serial.print( gx, 2); 
     Serial.print(" gy = "); Serial.print( gy, 2); 
     Serial.print(" gz = "); Serial.print( gz, 2); Serial.println(" deg/s");
-    Serial.print("mx = "); Serial.print( (int)mx ); 
-    Serial.print(" my = "); Serial.print( (int)my ); 
-    Serial.print(" mz = "); Serial.print( (int)mz ); Serial.println(" mG");
+    Serial.print("mx = "); Serial.print( (int)mx); 
+    Serial.print(" my = "); Serial.print( (int)my); 
+    Serial.print(" mz = "); Serial.print( (int)mz); Serial.println(" mG");
     
     Serial.print("q0 = "); Serial.print(q[0]);
     Serial.print(" qx = "); Serial.print(q[1]); 
     Serial.print(" qy = "); Serial.print(q[2]); 
     Serial.print(" qz = "); Serial.println(q[3]); 
     }               
- /*
- tempCount = readTempData();  // Read the gyro adc values
-    temperature = ((float) tempCount) / 333.87 + 21.0; // Gyro chip temperature in degrees Centigrade
+ 
+// tempCount = readTempData();  // Read the gyro adc values
+//    temperature = ((float) tempCount) / 333.87 + 21.0; // Gyro chip temperature in degrees Centigrade
    // Print temperature in degrees Centigrade      
-    Serial.print("Gyro temperature is ");  Serial.print(temperature, 1);  Serial.println(" degrees C"); // Print T values to tenths of s degree C
+//    Serial.print("Gyro temperature is ");  Serial.print(temperature, 1);  Serial.println(" degrees C"); // Print T values to tenths of s degree C
  
     D1 = MS5637Read(ADC_D1, OSR);  // get raw pressure value
     D2 = MS5637Read(ADC_D2, OSR);  // get raw temperature value
@@ -608,46 +607,31 @@ void loop()
     if(Temperature < 20)                   // correction for low temperature
     {
       T2      = 3*dT*dT/pow(2, 33); 
-      OFFSET2 = 61*(Temperature - 2000)*(Temperature - 2000)/16;
-      SENS2   = 29*(Temperature - 2000)*(Temperature - 2000)/16;
+      OFFSET2 = 61*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
+      SENS2   = 29*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
     } 
     if(Temperature < -15)                      // correction for very low temperature
     {
-      OFFSET2 = OFFSET2 + 17*(Temperature + 1500)*(Temperature + 1500);
-      SENS2 = SENS2 + 9*(Temperature + 1500)*(Temperature + 1500);
+      OFFSET2 = OFFSET2 + 17*(100*Temperature + 1500)*(100*Temperature + 1500);
+      SENS2 = SENS2 + 9*(100*Temperature + 1500)*(100*Temperature + 1500);
     }
  // End of second order corrections
  //
-     Temperature = Temperature - T2;
+     Temperature = Temperature - T2/100;
      OFFSET = OFFSET - OFFSET2;
      SENS = SENS - SENS2;
  
      Pressure = (((D1*SENS)/pow(2, 21) - OFFSET)/pow(2, 15))/100;  // Pressure in mbar or kPa
-  
-    const int station_elevation_m = 1050.0*0.3048; // Accurate for the roof on my house; convert from feet to meters
 
-    float baroin = Pressure; // pressure is now in millibars
-
-    // Formula to correct absolute pressure in millbars to "altimeter pressure" in inches of mercury 
-    // comparable to weather report pressure
-    float part1 = baroin - 0.3; //Part 1 of formula
-    const float part2 = 0.0000842288;
-    float part3 = pow(part1, 0.190284);
-    float part4 = (float)station_elevation_m / part3;
-    float part5 = (1.0 + (part2 * part4));
-    float part6 = pow(part5, 5.2553026);
-    float altimeter_setting_pressure_mb = part1 * part6; // Output is now in adjusted millibars
-    baroin = altimeter_setting_pressure_mb * 0.02953;
-
-    float altitude = 145366.45*(1. - pow((Pressure/1013.25), 0.190284));
+     float altitude = 145366.45*(1. - pow((Pressure/1013.25), 0.190284));
    
-    if(SerialDebug) {
-    Serial.print("Digital temperature value = "); Serial.print( (float)Temperature, 2); Serial.println(" C"); // temperature in degrees Celsius
-    Serial.print("Digital temperature value = "); Serial.print(9.*(float) Temperature/5. + 32., 2); Serial.println(" F"); // temperature in degrees Fahrenheit
-    Serial.print("Digital pressure value = "); Serial.print((float) Pressure, 2);  Serial.println(" mbar");// pressure in millibar
-    Serial.print("Altitude = "); Serial.print(altitude, 2); Serial.println(" feet");
+     if(SerialDebug) {
+     Serial.print("Digital temperature value = "); Serial.print( (float)Temperature, 2); Serial.println(" C"); // temperature in degrees Celsius
+     Serial.print("Digital temperature value = "); Serial.print(9.*(float) Temperature/5. + 32., 2); Serial.println(" F"); // temperature in degrees Fahrenheit
+     Serial.print("Digital pressure value = "); Serial.print((float) Pressure, 2);  Serial.println(" mbar");// pressure in millibar
+     Serial.print("Altitude = "); Serial.print(altitude, 2); Serial.println(" feet");
     }
-    */
+    
   // Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
   // In this coordinate system, the positive z-axis is down toward Earth. 
   // Yaw is the angle between Sensor x-axis and Earth magnetic North (or true North if corrected for local declination, looking down on the sensor positive yaw is counterclockwise.
@@ -782,7 +766,7 @@ void readAccelData(int16_t * destination)
   uint8_t rawData[6];  // x/y/z accel register data stored here
   readBytes(BMX055_ACC_ADDRESS, BMX055_ACC_D_X_LSB, 6, &rawData[0]);       // Read the six raw data registers into data array
   if((rawData[0] & 0x01) && (rawData[2] & 0x01) && (rawData[4] & 0x01)) {  // Check that all 3 axes have new data
-  destination[0] = (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]) >> 4;           // Turn the MSB and LSB into a signed 12-bit value
+  destination[0] = (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]) >> 4;  // Turn the MSB and LSB into a signed 12-bit value
   destination[1] = (int16_t) (((int16_t)rawData[3] << 8) | rawData[2]) >> 4;  
   destination[2] = (int16_t) (((int16_t)rawData[5] << 8) | rawData[4]) >> 4; 
   }
@@ -797,16 +781,35 @@ void readGyroData(int16_t * destination)
   destination[2] = (int16_t) (((int16_t)rawData[5] << 8) | rawData[4]); 
 }
 
-void readMagData(int16_t * destination)
+void readMagData(int16_t * magData)
 {
+  int16_t mdata_x = 0, mdata_y = 0, mdata_z = 0, temp = 0;
+  uint16_t data_r = 0;
   uint8_t rawData[8];  // x/y/z hall magnetic field data, and Hall resistance data
-  readBytes(BMX055_GYRO_ADDRESS, BMX055_MAG_XOUT_LSB, 8, &rawData[0]);  // Read the eight raw data registers sequentially into data array
+  readBytes(BMX055_MAG_ADDRESS, BMX055_MAG_XOUT_LSB, 8, &rawData[0]);  // Read the eight raw data registers sequentially into data array
     if(rawData[6] & 0x01) { // Check if data ready status bit is set
-    destination[0] = (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]) >> 3;  // 13-bit signed integer for x-axis field
-    destination[1] = (int16_t) (((int16_t)rawData[3] << 8) | rawData[2]) >> 3;  // 13-bit signed integer for y-axis field
-    destination[2] = (int16_t) (((int16_t)rawData[5] << 8) | rawData[4]) >> 1;  // 15-bit signed integer for z-axis field
-    destination[3] = (int16_t) (((int16_t)rawData[7] << 8) | rawData[6]) >> 2;  // 14-bit signed integer for Hall resistance
-   }
+    mdata_x = (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]) >> 3;  // 13-bit signed integer for x-axis field
+    mdata_y = (int16_t) (((int16_t)rawData[3] << 8) | rawData[2]) >> 3;  // 13-bit signed integer for y-axis field
+    mdata_z = (int16_t) (((int16_t)rawData[5] << 8) | rawData[4]) >> 1;  // 15-bit signed integer for z-axis field
+    data_r = (uint16_t) (((uint16_t)rawData[7] << 8) | rawData[6]) >> 2;  // 14-bit unsigned integer for Hall resistance
+   
+   // calculate temperature compensated 16-bit magnetic fields
+   temp = ((int16_t)(((uint16_t)((((int32_t)dig_xyz1) << 14)/(data_r != 0 ? data_r : dig_xyz1))) - ((uint16_t)0x4000)));
+   magData[0] = ((int16_t)((((int32_t)mdata_x) *
+				((((((((int32_t)dig_xy2) * ((((int32_t)temp) * ((int32_t)temp)) >> 7)) +
+			     (((int32_t)temp) * ((int32_t)(((int16_t)dig_xy1) << 7)))) >> 9) +
+			   ((int32_t)0x100000)) * ((int32_t)(((int16_t)dig_x2) + ((int16_t)0xA0)))) >> 12)) >> 13)) +
+			(((int16_t)dig_x1) << 3);
+
+   temp = ((int16_t)(((uint16_t)((((int32_t)dig_xyz1) << 14)/(data_r != 0 ? data_r : dig_xyz1))) - ((uint16_t)0x4000)));
+   magData[1] = ((int16_t)((((int32_t)mdata_y) *
+				((((((((int32_t)dig_xy2) * ((((int32_t)temp) * ((int32_t)temp)) >> 7)) + 
+			     (((int32_t)temp) * ((int32_t)(((int16_t)dig_xy1) << 7)))) >> 9) +
+		           ((int32_t)0x100000)) * ((int32_t)(((int16_t)dig_y2) + ((int16_t)0xA0)))) >> 12)) >> 13)) +
+			(((int16_t)dig_y1) << 3);
+   magData[2] = (((((int32_t)(mdata_z - dig_z4)) << 15) - ((((int32_t)dig_z3) * ((int32_t)(((int16_t)data_r) -
+	((int16_t)dig_xyz1))))>>2))/(dig_z2 + ((int16_t)(((((int32_t)dig_z1) * ((((int16_t)data_r) << 1)))+(1<<15))>>16))));
+    }
   }
 
 int16_t readACCTempData()
@@ -840,8 +843,8 @@ void trimBMX055()  // get trim values for magnetometer sensitivity
 void initBMX055()
 {  
    // start with all sensors in default mode with all registers reset
-//   writeByte(BMX055_ACC_ADDRESS,  BMX055_ACC_BGW_SOFTRESET, 0xB6);  // reset accelerometer
-//   delay(1000); // Wait for all registers to reset 
+   writeByte(BMX055_ACC_ADDRESS,  BMX055_ACC_BGW_SOFTRESET, 0xB6);  // reset accelerometer
+   delay(1000); // Wait for all registers to reset 
 
    // Configure accelerometer
    writeByte(BMX055_ACC_ADDRESS, BMX055_ACC_PMU_RANGE, Ascale & 0x0F); // Set accelerometer full range
@@ -883,7 +886,7 @@ void initBMX055()
 // writeByte(BMX055_GYRO_ADDRESS, BMX055_GYRO_INT_MAP_1, 0x80); // select INT3 (intGYRO1) as GYRO data ready interrupt 
 
 // writeByte(BMX055_GYRO_ADDRESS, BMX055_GYRO_BGW_SPI3_WDT, 0x06); // Enable watchdog timer for I2C with 50 ms window
-/*
+
 
 // Configure magnetometer 
 writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_PWR_CNTL1, 0x82);  // Softreset magnetometer, ends up in sleep mode
@@ -894,7 +897,7 @@ delay(100);
 writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_PWR_CNTL2, MODR << 3); // Normal mode
 //writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_PWR_CNTL2, MODR << 3 | 0x02); // Forced mode
 
-writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_INT_EN_2, 0x84); // Enable data ready pin interrupt, active high
+//writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_INT_EN_2, 0x84); // Enable data ready pin interrupt, active high
 
 // Set up four standard configurations for the magnetometer
   switch (Mmode)
@@ -920,9 +923,168 @@ writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_INT_EN_2, 0x84); // Enable data ready p
           writeByte(BMX055_MAG_ADDRESS, BMX055_MAG_REP_Z,  0x51);  // 83 repetitions (oversampling)
           break;
   }
+}
 
+void fastcompaccelBMX055(float * dest1) 
+{
+  writeByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL, 0x80); // set all accel offset compensation registers to zero
+  writeByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_SETTING, 0x20);  // set offset targets to 0, 0, and +1 g for x, y, z axes
+  writeByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL, 0x20); // calculate x-axis offset
+
+  byte c = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL);
+  while(!(c & 0x10)) {   // check if fast calibration complete
+  c = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL);
+  delay(10);
+}
+  writeByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL, 0x40); // calculate y-axis offset
+
+  c = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL);
+  while(!(c & 0x10)) {   // check if fast calibration complete
+  c = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL);
+  delay(10);
+}
+  writeByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL, 0x60); // calculate z-axis offset
+
+  c = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL);
+  while(!(c & 0x10)) {   // check if fast calibration complete
+  c = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_CTRL);
+  delay(10);
+}
+
+  int8_t compx = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_OFFSET_X);
+  int8_t compy = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_OFFSET_Y);
+  int8_t compz = readByte(BMX055_ACC_ADDRESS, BMX055_ACC_OFC_OFFSET_Z);
+
+  dest1[0] = (float) compx/128.; // accleration bias in g
+  dest1[1] = (float) compy/128.; // accleration bias in g
+  dest1[2] = (float) compz/128.; // accleration bias in g
+}
+/*
+// Function which accumulates gyro and accelerometer data after device initialization. It calculates the average
+// of the at-rest readings and then loads the resulting offsets into accelerometer and gyro bias registers.
+void accelgyrocalBMX055(float * dest1, float * dest2)
+{  
+  uint8_t data[6] = {0, 0, 0, 0, 0, 0};
+  int32_t gyro_bias[3] = {0, 0, 0}, accel_bias[3] = {0, 0, 0};
+  uint16_t samples, ii;
+  
+  Serial.println("Calibrating gyro...");
+ 
+  // First get gyro bias
+  byte c = readByte(BMX055G_ADDRESS, BMX055G_CTRL_REG5_G);
+  writeByte(BMX055G_ADDRESS, BMX055G_CTRL_REG5_G, c | 0x40);     // Enable gyro FIFO  
+  delay(200);                                                       // Wait for change to take effect
+  writeByte(BMX055G_ADDRESS, BMX055G_FIFO_CTRL_REG_G, 0x20 | 0x1F);  // Enable gyro FIFO stream mode and set watermark at 32 samples
+  delay(1000);  // delay 1000 milliseconds to collect FIFO samples
+  
+  samples = (readByte(BMX055G_ADDRESS, BMX055G_FIFO_SRC_REG_G) & 0x1F); // Read number of stored samples
+
+  for(ii = 0; ii < samples ; ii++) {            // Read the gyro data stored in the FIFO
+    int16_t gyro_temp[3] = {0, 0, 0};
+    readBytes(BMX055G_ADDRESS, BMX055G_OUT_X_L_G, 6, &data[0]);
+    gyro_temp[0] = (int16_t) (((int16_t)data[1] << 8) | data[0]); // Form signed 16-bit integer for each sample in FIFO
+    gyro_temp[1] = (int16_t) (((int16_t)data[3] << 8) | data[2]);
+    gyro_temp[2] = (int16_t) (((int16_t)data[5] << 8) | data[4]);
+
+    gyro_bias[0] += (int32_t) gyro_temp[0]; // Sum individual signed 16-bit biases to get accumulated signed 32-bit biases
+    gyro_bias[1] += (int32_t) gyro_temp[1]; 
+    gyro_bias[2] += (int32_t) gyro_temp[2]; 
+  }  
+
+  gyro_bias[0] /= samples; // average the data
+  gyro_bias[1] /= samples; 
+  gyro_bias[2] /= samples; 
+  
+  dest1[0] = (float)gyro_bias[0]*gRes;  // Properly scale the data to get deg/s
+  dest1[1] = (float)gyro_bias[1]*gRes;
+  dest1[2] = (float)gyro_bias[2]*gRes;
+  
+  c = readByte(BMX055G_ADDRESS, BMX055G_CTRL_REG5_G);
+  writeByte(BMX055G_ADDRESS, BMX055G_CTRL_REG5_G, c & ~0x40);   //Disable gyro FIFO  
+  delay(200);
+  writeByte(BMX055G_ADDRESS, BMX055G_FIFO_CTRL_REG_G, 0x00);  // Enable gyro bypass mode
+ 
+   Serial.println("Calibrating accel...");
+ 
+  // now get the accelerometer bias
+  c = readByte(BMX055XM_ADDRESS, BMX055XM_CTRL_REG0_XM);
+  writeByte(BMX055XM_ADDRESS, BMX055XM_CTRL_REG0_XM, c | 0x40);     // Enable gyro FIFO  
+  delay(200);                                                       // Wait for change to take effect
+  writeByte(BMX055XM_ADDRESS, BMX055XM_FIFO_CTRL_REG, 0x20 | 0x1F);  // Enable gyro FIFO stream mode and set watermark at 32 samples
+  delay(1000);  // delay 1000 milliseconds to collect FIFO samples
+  
+  samples = (readByte(BMX055XM_ADDRESS, BMX055XM_FIFO_SRC_REG) & 0x1F); // Read number of stored samples
+
+  for(ii = 0; ii < samples ; ii++) {            // Read the gyro data stored in the FIFO
+    int16_t accel_temp[3] = {0, 0, 0};
+    readBytes(BMX055XM_ADDRESS, BMX055XM_OUT_X_L_A, 6, &data[0]);
+    accel_temp[0] = (int16_t) (((int16_t)data[1] << 8) | data[0]); // Form signed 16-bit integer for each sample in FIFO
+    accel_temp[1] = (int16_t) (((int16_t)data[3] << 8) | data[2]);
+    accel_temp[2] = (int16_t) (((int16_t)data[5] << 8) | data[4]);
+
+    accel_bias[0] += (int32_t) accel_temp[0]; // Sum individual signed 16-bit biases to get accumulated signed 32-bit biases
+    accel_bias[1] += (int32_t) accel_temp[1]; 
+    accel_bias[2] += (int32_t) accel_temp[2]; 
+  }  
+
+  accel_bias[0] /= samples; // average the data
+  accel_bias[1] /= samples; 
+  accel_bias[2] /= samples; 
+  
+  if(accel_bias[2] > 0L) {accel_bias[2] -= (int32_t) (1.0/aRes);}  // Remove gravity from the z-axis accelerometer bias calculation
+  else {accel_bias[2] += (int32_t) (1.0/aRes);}
+  
+  dest2[0] = (float)accel_bias[0]*aRes;  // Properly scale the data to get g
+  dest2[1] = (float)accel_bias[1]*aRes;
+  dest2[2] = (float)accel_bias[2]*aRes;
+  
+  c = readByte(BMX055XM_ADDRESS, BMX055XM_CTRL_REG0_XM);
+  writeByte(BMX055XM_ADDRESS, BMX055XM_CTRL_REG0_XM, c & ~0x40);   //Disable accel FIFO  
+  delay(200);
+  writeByte(BMX055XM_ADDRESS, BMX055XM_FIFO_CTRL_REG, 0x00);  // Enable accel bypass mode
+}
 */
+void magcalBMX055(float * dest1) 
+{
+  uint16_t ii = 0, sample_count = 0;
+  int32_t mag_bias[3] = {0, 0, 0};
+  int16_t mag_max[3] = {0, 0, 0}, mag_min[3] = {0, 0, 0};
+ 
+  Serial.println("Mag Calibration: Wave device in a figure eight until done!");
+  delay(4000);
+  
+   sample_count = 128;
+   for(ii = 0; ii < sample_count; ii++) {
+    int16_t mag_temp[3] = {0, 0, 0};
+    readMagData(mag_temp);
+    for (int jj = 0; jj < 3; jj++) {
+      if(mag_temp[jj] > mag_max[jj]) mag_max[jj] = mag_temp[jj];
+      if(mag_temp[jj] < mag_min[jj]) mag_min[jj] = mag_temp[jj];
+    }
+    delay(105);  // at 10 Hz ODR, new mag data is available every 100 ms
+   }
 
+//    Serial.println("mag x min/max:"); Serial.println(mag_max[0]); Serial.println(mag_min[0]);
+//    Serial.println("mag y min/max:"); Serial.println(mag_max[1]); Serial.println(mag_min[1]);
+//    Serial.println("mag z min/max:"); Serial.println(mag_max[2]); Serial.println(mag_min[2]);
+
+    mag_bias[0]  = (mag_max[0] + mag_min[0])/2;  // get average x mag bias in counts
+    mag_bias[1]  = (mag_max[1] + mag_min[1])/2;  // get average y mag bias in counts
+    mag_bias[2]  = (mag_max[2] + mag_min[2])/2;  // get average z mag bias in counts
+    
+    dest1[0] = (float) mag_bias[0]*mRes;  // save mag biases in G for main program
+    dest1[1] = (float) mag_bias[1]*mRes;   
+    dest1[2] = (float) mag_bias[2]*mRes;          
+
+ /* //write biases to accelerometermagnetometer offset registers as counts);
+  writeByte(BMX055M_ADDRESS, BMX055M_OFFSET_X_REG_L_M, (int16_t) mag_bias[0]  & 0xFF);
+  writeByte(BMX055M_ADDRESS, BMX055M_OFFSET_X_REG_H_M, ((int16_t)mag_bias[0] >> 8) & 0xFF);
+  writeByte(BMX055M_ADDRESS, BMX055M_OFFSET_Y_REG_L_M, (int16_t) mag_bias[1] & 0xFF);
+  writeByte(BMX055M_ADDRESS, BMX055M_OFFSET_Y_REG_H_M, ((int16_t)mag_bias[1] >> 8) & 0xFF);
+  writeByte(BMX055M_ADDRESS, BMX055M_OFFSET_Z_REG_L_M, (int16_t) mag_bias[2] & 0xFF);
+  writeByte(BMX055M_ADDRESS, BMX055M_OFFSET_Z_REG_H_M, ((int16_t)mag_bias[2] >> 8) & 0xFF);
+ */
+   Serial.println("Mag Calibration done!");
 }
 
 // I2C communication with the MS5637 is a little different from that with the MPU9250 and most other sensors
