@@ -1,5 +1,7 @@
 BMX-055
 =======
+!(https://d3s5r33r268y59.cloudfront.net/44691/products/thumbs/2014-09-22T05:04:54.122Z-BMX055.1.jpg.2560x2560_q85.jpg)
+
  Demonstrate basic BMX-055 functionality including parameterizing the register addresses, initializing the sensor, 
  getting properly scaled accelerometer, gyroscope, and magnetometer data out. Added display functions to 
  allow display to on breadboard monitor. Addition of 9 DoF sensor fusion using open source Madgwick and 
