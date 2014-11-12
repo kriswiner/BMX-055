@@ -230,7 +230,7 @@ Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 3, 4);
 #define AFS_2G  0x03
 #define AFS_4G  0x05
 #define AFS_8G  0x08
-#define AFS_16G 0x0B
+#define AFS_16G 0x0C
 
 enum ACCBW {    // define BMX055 accelerometer bandwidths
   ABW_8Hz,      // 7.81 Hz,  64 ms update time
