@@ -553,15 +553,15 @@ void loop()
   sum += deltat; // sum for averaging filter update rate
   sumCount++;
   
-  // Sensors x (y)-axis of the accelerometer is aligned with the y (x)-axis of the magnetometer;
-  // the magnetometer z-axis (+ down) is opposite to z-axis (+ up) of accelerometer and gyro!
-  // We have to make some allowance for this orientationmismatch in feeding the output to the quaternion filter.
-  // For the MPU-9250, we have chosen a magnetic rotation that keeps the sensor forward along the x-axis just like
-  // in the BMX055 sensor. This rotation can be modified to allow any convenient orientation convention.
+  // Sensors x (y)-axis of the accelerometer is aligned with the -y (x)-axis of the magnetometer;
+  // the magnetometer z-axis (+ up) is aligned with z-axis (+ up) of accelerometer and gyro!
+  // We have to make some allowance for this orientation mismatch in feeding the output to the quaternion filter.
+  // For the BMX-055, we have chosen a magnetic rotation that keeps the sensor forward along the x-axis just like
+  // in the MPU9250 sensor. This rotation can be modified to allow any convenient orientation convention.
   // This is ok by aircraft orientation standards!  
   // Pass gyro rate as rad/s
-  MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f,  my,  mx, mz);
-//  MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, my, mx, mz);
+  MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f,  -my,  mx, mz);
+//  MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, -my, mx, mz);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
     delt_t = millis() - count;
@@ -649,6 +649,12 @@ void loop()
     yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
     roll  *= 180.0f / PI;
      
+    // Or define output variable according to the Android system, where heading (0 to 260) is defined by the angle between the y-axis 
+    // and True North, pitch is rotation about the x-axis (-180 to +180), and roll is rotation about the y-axis (-90 to +90)
+    // In this systen, the z-axis is pointing away from Earth, the +y-axis is at the "top" of the device (cellphone) and the +x-axis
+    // points toward the right of the device.
+    //
+    
     if(SerialDebug) {
     Serial.print("Yaw, Pitch, Roll: ");
     Serial.print(yaw, 2);
