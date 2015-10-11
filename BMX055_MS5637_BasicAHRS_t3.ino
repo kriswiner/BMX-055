@@ -295,7 +295,7 @@ uint8_t OSR    = ADC_8192;         // set pressure amd temperature oversample ra
 uint8_t Gscale = GFS_125DPS;       // set gyro full scale  
 uint8_t GODRBW = G_200Hz23Hz;      // set gyro ODR and bandwidth 
 uint8_t Ascale = AFS_2G;           // set accel full scale  
-uint8_t ACCBW  = 0x08 & ABW_16Hz;  // Choose bandwidth for accelerometer
+uint8_t ACCBW  = 0x08 | ABW_16Hz;  // Choose bandwidth for accelerometer, need bit 3 = 1 to enable bandwidth choice in enum
 uint8_t Mmode  = Regular;          // Choose magnetometer operation mode
 uint8_t MODR   = MODR_10Hz;        // set magnetometer data rate 
 float aRes, gRes, mRes;            // scale resolutions per LSB for the sensors
